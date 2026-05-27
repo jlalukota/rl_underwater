@@ -1,0 +1,5 @@
+hydralab-usv/.venv/
+.venv/
+__pycache__/
+*.pyc
+logs/
