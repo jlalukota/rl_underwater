@@ -2,10 +2,13 @@
 torch>=2.0
 numpy>=1.24
 gymnasium>=0.29
+pyyaml>=6.0
 
 # Training
 stable-baselines3>=2.0
 tensorboard>=2.13
+# If ppo_train.py uses progress_bar=True, use this instead:
+# stable-baselines3[extra]>=2.0
 
 # Visualization
 matplotlib>=3.7
@@ -13,6 +16,9 @@ matplotlib>=3.7
 # Testing
 pytest>=7.0
 pytest-cov
+
+# Optional: RLlib wrappers (training/rllib_env.py)
+# ray[rllib]>=2.9
 
 # Optional: Isaac Lab (installed separately via Isaac Sim / pip)
 # See https://isaac-sim.github.io/IsaacLab/source/setup/installation/pip_installation.html
