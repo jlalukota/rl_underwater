@@ -353,49 +353,147 @@ Runs the env for N steps under stress (random/max actions, full disturbances) an
 
 ## Setup
 
-### Requirements
+### Prerequisites
 
-- Python ≥ 3.10
-- PyTorch ≥ 2.0
-- gymnasium ≥ 0.29
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | ≥ 3.10 | `python3 --version` to check |
+| git | any | |
+| OS | Linux, macOS, or Windows via **WSL2** | WSL2 is the supported path on Windows |
+| GPU (optional) | NVIDIA + CUDA-enabled PyTorch | CPU works for development and small runs |
 
-### Install (development mode)
+### 1. Clone
 
 ```bash
-git clone <https://github.com/jlalukota/rl_underwater.git> hydralab-usv
-cd hydralab-usv
+git clone https://github.com/jlalukota/rl_underwater.git
+cd rl_underwater/hydralab-usv    # package root: the folder containing setup.py
+```
 
-# Core only (standalone gymnasium mode)
-pip install -e .
+> **WSL users:** clone into the Linux filesystem (e.g. `~/projects`), not `/mnt/c/...`.
+> Cross-filesystem I/O is much slower, and OneDrive sync can lock or corrupt files inside `.venv/`.
 
-# With training support (SB3 + TensorBoard)
-pip install -e ".[train]"
+### 2. Create a virtual environment
 
-# With visualization
-pip install -e ".[viz]"
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+```
 
-# Everything
+If `venv` is missing on Ubuntu/WSL: `sudo apt install python3-venv`.
+
+### 3. Install
+
+Pick the extras you need:
+
+| Command | Installs |
+|---|---|
+| `pip install -e .` | Core env only (torch, numpy, gymnasium) |
+| `pip install -e ".[train]"` | + Stable-Baselines3, TensorBoard |
+| `pip install -e ".[viz]"` | + matplotlib |
+| `pip install -e ".[all]"` | Everything |
+
+Recommended for first-time setup:
+
+```bash
 pip install -e ".[all]"
+pip install pyyaml          # enables YAML configs and the 2 YAML-dependent tests
 ```
 
-### Optional: YAML config support
+If the editable install fails, fall back to:
 
 ```bash
-pip install pyyaml
+pip install -r requirements.txt
+pip install -e .
 ```
 
-### Optional: Isaac Lab
+**GPU:** install a CUDA build of PyTorch *before* the step above, using the selector at
+[pytorch.org/get-started](https://pytorch.org/get-started/locally/). Then verify:
 
-Isaac Lab requires an NVIDIA Isaac Sim installation. Follow the [Isaac Lab installation guide](https://isaac-sim.github.io/IsaacLab/source/setup/installation/pip_installation.html), then the environment auto-detects and switches to `DirectRLEnv` mode.
+```bash
+nvidia-smi
+python -c "import torch; print(torch.cuda.is_available())"   # should print True
+```
 
-### Verify installation
+### 4. Verify the install
 
 ```bash
 pytest tests/ -v
-# Expected: 116 passed, 3 skipped (2 PyYAML, 1 SB3 smoke)
 ```
 
----
+Expected: `116 passed, 3 skipped`. Skips come from missing PyYAML (2) and the SB3 smoke test (1).
+With PyYAML installed, the YAML skips go away.
+
+### 5. Smoke test
+
+```bash
+# Throughput check (~30 s)
+python training/benchmark.py --device cpu --max-envs 256
+
+# Short PPO run to confirm training runs end-to-end
+python training/ppo_train.py --num-envs 64 --device cpu --total-steps 100000
+```
+
+Checkpoints go to `checkpoints/` and TensorBoard logs go to `logs/ppo_blueboat/`:
+
+```bash
+tensorboard --logdir logs/
+```
+
+### 6. Verify rendering
+
+The debug renderer uses matplotlib. First check whether a GUI backend is available:
+
+```bash
+python -c "import matplotlib; print(matplotlib.get_backend())"
+```
+
+If it prints `agg`, no window can open (this is common on headless machines and WSL without WSLg).
+**Save to a file instead.** This works everywhere:
+
+```python
+# render_check.py
+import torch
+from configs.blueboat_cfg import HydraLabConfig
+from envs.blueboat_env import BlueboatEnv
+from visualization.debug_renderer import DebugRenderer
+
+cfg = HydraLabConfig()
+cfg.env.num_envs = 4
+cfg.device = "cpu"
+
+env = BlueboatEnv(cfg)
+env.reset(seed=0)
+renderer = DebugRenderer(num_envs_to_show=4)
+
+for _ in range(200):
+    actions = torch.rand(4, 2) * 2 - 1
+    obs, rew, *_ = env.step(actions)
+    renderer.update(env, rew)   # records history only
+
+renderer.render(env)            # actually draws the figure
+renderer.save("render_check.png")
+print("Saved render_check.png")
+env.close()
+```
+
+```bash
+python render_check.py
+explorer.exe render_check.png   # WSL: opens in Windows image viewer
+```
+
+On Windows 11 with WSLg, `renderer.show()` will open a live window. On Windows 10 WSL, use the save-to-file path.
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ModuleNotFoundError: configs` | Running from the wrong directory, or package not installed | `cd` to the folder with `setup.py`, then `pip install -e .` |
+| Render window never appears | Non-GUI matplotlib backend (`agg`) | Use `renderer.save(...)` as in step 6 |
+| Render shows empty axes | `update()` was called but `render()` wasn't | Call `renderer.render(env)` before `show()`/`save()` |
+| `evaluate.py` fails without a checkpoint | It requires a trained PPO model | Train first, or use `render_check.py` |
+| `torch.cuda.is_available()` is `False` | CPU-only PyTorch wheel | Reinstall PyTorch from the CUDA selector |
+| Very slow installs or tests on WSL | Repo is on `/mnt/c` or OneDrive | Re-clone into `~/` |
 
 ## Usage
 
